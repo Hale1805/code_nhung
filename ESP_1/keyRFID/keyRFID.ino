@@ -197,7 +197,7 @@ void updateLightServoAccurate() {
 
 
 void applyServo(int pos, const char* reason) {
-  int angle = pos ? 0 : 90;
+  int angle = pos ? 90 : 0;
   servoRain.write(angle);
   lastServoChangeAt = millis();
   effectivePos = pos;
@@ -226,10 +226,18 @@ BLYNK_WRITE(V13) {
 // V14: Bật/tắt AUTO
 BLYNK_WRITE(V14) {
   curtainAuto = (param.asInt() == 1);
-  Serial.printf("[V14] AUTO mode = %s\n", curtainAuto ? "ON" : "OFF");
-  if (Blynk.connected()) {
-    Blynk.virtualWrite(V14, curtainAuto ? 1 : 0);
+
+  if (curtainAuto) {
+    // Vừa bật AUTO -> quyết định NGAY theo cảm biến hiện tại
+    bool rawHigh = (digitalRead(LDR_DO_PIN) == HIGH); // LM393: HIGH = sáng
+    int target = rawHigh ? 1 : 0;                     // 1 = mở, 0 = đóng
+    applyLightServo(target, "AUTO immediate by sensor");
+  } else {
+    // Vừa tắt AUTO -> vào MANUAL, GIỮ nguyên vị trí đang có
+    if (Blynk.connected()) Blynk.virtualWrite(V13, curtainPos);
   }
+
+  if (Blynk.connected()) Blynk.virtualWrite(V14, curtainAuto ? 1 : 0);
 }
 
 
@@ -242,15 +250,16 @@ void showWelcome() {
 void showConnectingWiFiOnce() {
   lcd.clear();
   lcd.setCursor(0,0); lcd.print("Dang ket noi WF");
+  delay(3000);
   lcd.setCursor(0,1); lcd.print("(offline OK)");
-  delay(1000);
+  delay(3000);
   showWelcome();
 }
 void showBlynkOKOnce() {
   lcd.clear();
   lcd.setCursor(0,0); lcd.print("Blynk OK");
   lcd.setCursor(0,1); lcd.print("Ready");
-  delay(500);
+  delay(1000);
   showWelcome();
 }
 
@@ -335,12 +344,13 @@ void updateNetwork() {
       lcd.clear();
       lcd.setCursor(0,0); lcd.print("WiFi OK");
       lcd.setCursor(0,1); lcd.print("Ket noi Blynk...");
+      delay(4000);
     } else {
       Serial.println("[NET] WiFi disconnected -> offline");
       lcd.clear();
       lcd.setCursor(0,0); lcd.print("WiFi ERROR!");
       lcd.setCursor(0,1); lcd.print("Offline mode");
-      delay(1000);
+      delay(4000);
       showWelcome();
     }
     prevWifi = wifi;
@@ -348,20 +358,8 @@ void updateNetwork() {
 
   if (bk != prevBlynk) {
     if (bk) {
-      Serial.println("[NET] Blynk connected");
-      // Gửi bù các thông báo còn nợ
-      if (pendingPirOn) {
-        Blynk.logEvent("pir_noti", "Phat hien vat the, den hien da bat ");
-        pendingPirOn = false;
-      }
-      if (pendingPirOff) {
-        Blynk.logEvent("pir_noti", "den hien da tat");
-        pendingPirOff = false;
-      }
       showBlynkOKOnce();
-    } else if (wifi) {
-      Serial.println("[NET] Blynk not connected yet");
-    }
+    } 
     prevBlynk = bk;
   }
 }
@@ -402,7 +400,7 @@ void setup() {
   // Rain sensor + servo mưa
   pinMode(RAIN_DO_PIN, INPUT);            // nếu module cần kéo lên thì dùng INPUT_PULLUP
   servoRain.attach(SERVO_RAIN, 500, 2400);
-  servoRain.write(90);
+  servoRain.write(0);
   lastServoChangeAt = millis();
 
   // Buzzer
@@ -422,6 +420,7 @@ void setup() {
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0,0); lcd.print("Khoi dong...");
+  delay(1000);
 
   // Keypad
   myKeypad.begin();
@@ -522,9 +521,10 @@ void loop() {
         Serial.println("❌ Sai mat khau!");
         lcd.clear();
         lcd.setCursor(0, 0); lcd.print("Sai mat khau!");
-        delay(700);
+        delay(1000);
         lcd.setCursor(0, 0); lcd.print("Vui long nhap   ");
-        lcd.setCursor(0, 1); lcd.print("lai mat khau!   ");
+        lcd.setCursor(0, 1); lcd.print("lai mat khau!   ");\
+        delay(1000);
         failCount++;
       }
       input_pass = "";
@@ -534,6 +534,7 @@ void loop() {
       Serial.println("Da xoa. Nhap lai...");
       lcd.setCursor(0, 0); lcd.print("Nhap lai...      ");
       lcd.setCursor(0, 1); lcd.print("                ");
+      delay(1000);
     }
     else {
       input_pass += key;
@@ -563,9 +564,10 @@ void loop() {
       Serial.println("❌ UID khong hop le!");
       lcd.clear();
       lcd.setCursor(0, 0); lcd.print("UID sai!");
-      delay(700);
+      delay(1000);
       lcd.setCursor(0, 0); lcd.print("Vui long quet    ");
       lcd.setCursor(0, 1); lcd.print("lai the!         ");
+      delay(1000);
       failCount++;
     }
 
@@ -597,14 +599,15 @@ void loop() {
       input_pass = "";
       if (failCount > 0) failCount = 0;
 
-      Serial.println("⏳ Timeout -> clear input & reset failCount");
+      Serial.println("Timeout -> clear input & reset failCount");
       lcd.clear();
       lcd.setCursor(0,0); lcd.print("Het thoi gian");
       lcd.setCursor(0,1); lcd.print("Nhap lai tu dau");
+      delay(1000);
 
       timeoutShowing = true;
       timeoutShownAt = now;
-      timedOut = true;               // 🔒 chốt
+      timedOut = true;               //
     }
 
     // Giữ thông báo 1.5s rồi về màn hình Welcome
